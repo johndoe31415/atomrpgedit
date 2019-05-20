@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+#	atomrpgedit - Savegame editor for the game Atom RPG
+#	Copyright (C) 2019-2019 Johannes Bauer
+#
+#	This file is part of atomrpgedit.
+#
+#	atomrpgedit is free software; you can redistribute it and/or modify
+#	it under the terms of the GNU General Public License as published by
+#	the Free Software Foundation; this program is ONLY licensed under
+#	version 3 of the License, later versions are explicitly excluded.
+#
+#	atomrpgedit is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with atomrpgedit; if not, write to the Free Software
+#	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+#	Johannes Bauer <JohannesBauer@gmx.de>
+
+import os
+import shutil
+import sys
+import json
+import struct
+import gzip
+import collections
+import datetime
+from FriendlyArgumentParser import FriendlyArgumentParser
+
+class AtomRPGEditor(object):
+	def __init__(self, filename):
+		with gzip.open(filename) as f:
+			raw_data = f.read()
+
+		self._parts = collections.OrderedDict()
+		offset = 0
+		while offset < len(raw_data):
+			(length, ) = struct.unpack("<L", raw_data[offset : offset + 4])
+			offset += 4
+			name = raw_data[offset : offset + length * 2].decode("utf-16-le")
+			offset += length * 2
+			(length, ) = struct.unpack("<L", raw_data[offset : offset + 4])
+			offset += 4
+
+			filedata = raw_data[offset : offset + length]
+			offset += length
+			self._parts[name] = filedata
+
+	def get_json(self, name):
+		return json.loads(self._parts[name].decode("ascii"))
+
+	def put_json(self, name, value):
+		self._parts[name] = json.dumps(value).encode("ascii")
+
+	def write_savegame(self, filename):
+		with gzip.open(filename, "wb") as f:
+			for (name, value) in self._parts.items():
+				name_encoded = name.encode("utf-16-le")
+				length = len(name_encoded) // 2
+				f.write(struct.pack("<L", length))
+				f.write(name_encoded)
+				f.write(struct.pack("<L", len(value)))
+				f.write(value)
+
+class PlayerEditor(object):
+	_CHARACTERISTICS_MAP = collections.OrderedDict([
+		("Strength", "strength"),
+		("Endurance", "endurance"),
+		("Dexterity", "agility"),
+		("Intellect", "intelligence"),
+		("Attention", "perception"),
+		("Personality", "charisma"),
+		("Luck", "luck"),
+	])
+
+	_SKILLS_MAP = collections.OrderedDict([
+		("Martial Arts", "Unarmed"),
+		("Melee Weapons", "MeleeWeapons"),
+		("Pistols and SMG", "SmallGuns"),
+		("Rifles & Shotguns", "BigGuns"),
+		("Automatic Firearms", "AutomaticFirearms"),
+		("Throwing Weapons", "Throwing"),
+		("Speechcraft", "Speech"),
+		("Barter", "Barter"),
+		("Gambling", "Gambling"),
+		("Survival", "Outdoorsman"),
+		("First Aid", "FirstAid"),
+		("Stealth", "Sneak"),
+		("Lock Picking", "Lockpick"),
+		("Pickpocket", "Steal"),
+		("Technology", "Science"),
+		("Tinkering", "Crafting"),
+	])
+
+	_ABILITIES_MAP = collections.OrderedDict([
+		("Morphine Doctor", "MorphineDoctor"),
+		("Entomologist", "Entomologist"),
+#		("?", "Special_Spec"),
+		("Gunslinger", "SP_MasterPisol"),
+		("Survivor", "SP_Rest"),
+		("True Grit", "SP_MasterRifle"),
+		("Duelist", "SP_Duel"),
+		("Fast Hand", "SP_FastPistol"),
+
+		("Good Meals", "SP_DOG_Meal"),
+		("Flea Waltz", "SP_DOG_Dodge"),
+		("Battle Stance", "SP_DOG_Defence"),
+	])
+
+
+	def __init__(self, party):
+		self._party = party
+		self._mid = 0
+
+	@property
+	def member(self):
+		return self._party[self._mid]
+
+	def select_member(self):
+		for (mid, member) in enumerate(party, 1):
+			print("%2d) %s" % (mid, member["name"]))
+		self._mid = int(input("Edit which character: ")) - 1
+		print()
+
+	def print_member(self):
+		if args.verbose >= 1:
+			print(json.dumps(self.member, indent = 4, sort_keys = True))
+		print("~~~ %s level %d (%d XP) ~~~" % (self.member["name"], int(self.member["stats"]["level"]), int(self.member["stats"]["xp"])))
+		print("Damage %-8.0f Hunger %-8.0f Radiation %-8.0f Toxicity %-8.0f" % (int(self.member["damage"]), float(self.member["conditions"]["hunger"]), float(self.member["conditions"]["radiation"]), float(self.member["conditions"]["toxic"])))
+		print("Characteristics %-2d" % (int(self.member["stats"]["freeStatPoints"])))
+		for (name, fieldname) in self._CHARACTERISTICS_MAP.items():
+			value = int(self.member["stats"][fieldname])
+			print("   %-20s %-2d" % (name, value))
+		print()
+		print("Skills          %-2d" % (int(self.member["stats"]["freeSkillPoints"])))
+		for (name, fieldname) in self._SKILLS_MAP.items():
+			value = int(self.member["stats"]["skills"][fieldname])
+			print("   %-20s %-2d" % (name, value))
+		print()
+		print("Abilities       %-2d" % (int(self.member["stats"]["freeSpecPoints"])))
+		abilities = set(self.member["stats"].get("perks", [ ]))
+		for (name, fieldname) in self._ABILITIES_MAP.items():
+			if fieldname in abilities:
+				print("   %s" % (name))
+				abilities.remove(fieldname)
+		for fieldname in abilities:
+			print("   (%s)" % (fieldname))
+
+	def _character_heal(self):
+		self.member["damage"] = "0"
+		self.member["conditions"]["hunger"] = "0"
+		self.member["conditions"]["radiation"] = "0"
+		self.member["conditions"]["toxic"] = "0"
+
+	def _character_reskill_char(self):
+		skillpts = 0
+		for (name, fieldname) in self._CHARACTERISTICS_MAP.items():
+			value = int(self.member["stats"][fieldname])
+			if value > 1:
+				skillpts += value - 1
+				self.member["stats"][fieldname] = "1"
+		self.member["stats"]["freeStatPoints"] = str(int(self.member["stats"]["freeStatPoints"]) + skillpts)
+
+	def _character_reskill_skills(self):
+		skillpts = 0
+		for (name, fieldname) in self._SKILLS_MAP.items():
+			value = int(self.member["stats"]["skills"][fieldname])
+			if value > 0:
+				skillpts += value
+				self.member["stats"]["skills"][fieldname] = "0"
+		self.member["stats"]["freeSkillPoints"] = str(int(self.member["stats"]["freeSkillPoints"]) + skillpts)
+
+	def _character_reskill_abilities(self):
+		perks = self.member["stats"].get("perks", [ ])
+		new_abilities = [ ability for ability in perks if not ability.startswith("SP_") ]
+		discarded_count = len(perks) - len(new_abilities)
+		if int(self.member["stats"]["specLevel"]) - 1 != discarded_count:
+			print("Cannot respec, specLevel is %d but would discard %d perks." % (int(self.member["stats"]["specLevel"]), discarded_count))
+		else:
+			self.member["stats"]["specLevel"] = "1"
+			self.member["stats"]["perks"] = new_abilities
+			skillpts = 0
+			for i in range(1, discarded_count + 1):
+				skillpts += i
+			self.member["stats"]["freeSpecPoints"] = str(int(self.member["stats"]["freeSpecPoints"]) + skillpts)
+
+	def _select_menu(self, options):
+		for (iid, (text, handler)) in enumerate(options, 1):
+			print("%2d) %s" % (iid, text))
+		option = input("Option: ")
+		if option == "":
+			return False
+		iid = int(option) - 1
+		handler = options[iid][1]
+		handler()
+		return True
+
+	def edit(self):
+		while True:
+			self.print_member()
+			success = self._select_menu((
+				("Heal character", self._character_heal),
+				("Reskill characteristics", self._character_reskill_char),
+				("Reskill skills", self._character_reskill_skills),
+				("Reskill abilities", self._character_reskill_abilities),
+			))
+			if not success:
+				break
+
+parser = FriendlyArgumentParser()
+parser.add_argument("-n", "--no-backup", action = "store_true", help = "Do not create a backup file.")
+parser.add_argument("-p", "--edit-player", action = "store_true", help = "Instead of asking for a particular character, select the player character by default.")
+parser.add_argument("-v", "--verbose", action = "count", default = 0, help = "Increase verbosity.")
+parser.add_argument("savegame", metavar = "savegame", type = str, help = "Savegame filename.")
+args = parser.parse_args(sys.argv[1:])
+
+
+arpgeditor = AtomRPGEditor(args.savegame)
+
+party = arpgeditor.get_json("player.dat")
+editor = PlayerEditor(party)
+if not args.edit_player:
+	editor.select_member()
+editor.edit()
+arpgeditor.put_json("player.dat", party)
+
+if not args.no_backup:
+	backup_filename = "backup_" + datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S") + "_" + os.path.basename(args.savegame)
+	shutil.copy(args.savegame, backup_filename)
+arpgeditor.write_savegame(args.savegame)
