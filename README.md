@@ -4,6 +4,19 @@ It allows to reskill your character and heal party members, i.e., cheat.
 
 ## Usage
 ```
+$ ./atomrpgedit --help
+usage: atomrpgedit [-h] [-n] [-p] [-v] savegame
+
+positional arguments:
+  savegame           Savegame filename.
+
+optional arguments:
+  -h, --help         show this help message and exit
+  -n, --no-backup    Do not create a backup file.
+  -p, --edit-player  Instead of asking for a particular character, select the
+                     player character by default.
+  -v, --verbose      Increase verbosity.
+
 $ ./atomrpgedit ~/.config/unity3d/AtomTeam/Atom/Save_0_v10.as 
  1) Player
  2) Wolfter
