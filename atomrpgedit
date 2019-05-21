@@ -187,6 +187,18 @@ class PlayerEditor(object):
 				skillpts += i
 			self.member["stats"]["freeSpecPoints"] = str(int(self.member["stats"]["freeSpecPoints"]) + skillpts)
 
+	def _character_add_char_points(self):
+		skillpts = int(input("Add how many points: "))
+		self.member["stats"]["freeStatPoints"] = str(int(self.member["stats"]["freeStatPoints"]) + skillpts)
+
+	def _character_add_skill_points(self):
+		skillpts = int(input("Add how many points: "))
+		self.member["stats"]["freeSkillPoints"] = str(int(self.member["stats"]["freeSkillPoints"]) + skillpts)
+
+	def _character_add_ability_points(self):
+		skillpts = int(input("Add how many points: "))
+		self.member["stats"]["freeSpecPoints"] = str(int(self.member["stats"]["freeSpecPoints"]) + skillpts)
+
 	def _select_menu(self, options):
 		for (iid, (text, handler)) in enumerate(options, 1):
 			print("%2d) %s" % (iid, text))
@@ -206,6 +218,9 @@ class PlayerEditor(object):
 				("Reskill characteristics", self._character_reskill_char),
 				("Reskill skills", self._character_reskill_skills),
 				("Reskill abilities", self._character_reskill_abilities),
+				("Add characteristic points", self._character_add_char_points),
+				("Add skill points", self._character_add_skill_points),
+				("Add ability points", self._character_add_ability_points),
 			))
 			if not success:
 				break
